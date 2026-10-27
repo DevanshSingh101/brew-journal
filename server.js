@@ -1,6 +1,7 @@
 const path = require('node:path');
 const express = require('express');
 const cookieSession = require('cookie-session');
+const db = require('./src/db');
 
 const isProd = process.env.NODE_ENV === 'production';
 if (isProd && !process.env.SESSION_SECRET) {
@@ -42,4 +43,9 @@ app.use((err, req, res, next) => {
 });
 
 const port = Number(process.env.PORT) || 3000;
-app.listen(port, () => console.log(`Brew Journal on http://localhost:${port}`));
+db.init()
+  .then(() => app.listen(port, () => console.log(`Brew Journal on http://localhost:${port} (${db.usePg ? 'Postgres' : 'SQLite'})`)))
+  .catch((err) => {
+    console.error('Could not initialise the database:', err);
+    process.exit(1);
+  });
