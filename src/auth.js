@@ -14,8 +14,9 @@ async function sessionLocals(req, res, next) {
     req.flash = (message) => { req.session.flash = message; };
 
     res.locals.user = null;
-    if (req.session.userId) {
-      req.user = await db.one('SELECT id, email FROM users WHERE id = $1', [req.session.userId]);
+    const userId = db.toObjectId(req.session.userId);
+    if (userId) {
+      req.user = db.withId(await db.users().findOne({ _id: userId }, { projection: { email: 1 } }));
       if (!req.user) req.session.userId = null;
       res.locals.user = req.user || null;
     }
@@ -67,17 +68,14 @@ router.post('/register', async (req, res, next) => {
       return res.status(422).render('auth', { title: 'Create account', mode: 'register', values, errors });
     }
     const hash = await bcrypt.hash(values.password, 10);
-    let user;
+    let result;
     try {
-      user = await db.one(
-        'INSERT INTO users (email, password_hash, created_at) VALUES ($1, $2, $3) RETURNING id',
-        [values.email, hash, new Date().toISOString()],
-      );
+      result = await db.users().insertOne({ email: values.email, password_hash: hash, created_at: new Date() });
     } catch (err) {
-      if (!db.isUniqueViolation(err)) throw err;
+      if (!db.isDuplicateKey(err)) throw err;
       return res.status(409).render('auth', { title: 'Create account', mode: 'register', values, errors: { email: 'An account with this email already exists. Log in instead.' } });
     }
-    req.session.userId = user.id;
+    req.session.userId = result.insertedId.toHexString();
     req.flash('Welcome! Add your first coffee or tea to get started.');
     res.redirect('/');
   } catch (err) {
@@ -88,13 +86,13 @@ router.post('/register', async (req, res, next) => {
 router.post('/login', loginLimiter, async (req, res, next) => {
   try {
     const email = String(req.body.email || '').trim().toLowerCase();
-    const user = await db.one('SELECT id, password_hash FROM users WHERE email = $1', [email]);
+    const user = await db.users().findOne({ email }, { projection: { password_hash: 1 } });
     const ok = user && await bcrypt.compare(String(req.body.password || ''), user.password_hash);
     if (!ok) {
       return res.status(401).render('auth', { title: 'Log in', mode: 'login', values: { email }, errors: { form: 'Email or password is incorrect.' } });
     }
     attempts.delete(req.ip);
-    req.session.userId = user.id;
+    req.session.userId = user._id.toHexString();
     res.redirect('/');
   } catch (err) {
     next(err);

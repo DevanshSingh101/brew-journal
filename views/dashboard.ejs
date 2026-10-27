@@ -14,8 +14,8 @@
           <small><%= i.kind === 'coffee' ? ROAST_LEVELS[i.variety] : TEA_TYPES[i.variety].label + ' tea' %><% if (i.origin) { %> · <%= i.origin %><% } %></small>
         </span>
         <span class="right">
-          <% if (i.best) { %><%- include('partials/stars', { r: i.best.rating }) %><br><% } %>
-          <small><%= i.brews.length %> brew<%= i.brews.length === 1 ? '' : 's' %><% if (i.fresh) { %> · day <%= i.fresh.days %>, <%= i.fresh.label.toLowerCase() %><% } %></small>
+          <% if (i.bestRating) { %><%- include('partials/stars', { r: i.bestRating }) %><br><% } %>
+          <small><%= i.count %> brew<%= i.count === 1 ? '' : 's' %><% if (i.fresh) { %> · day <%= i.fresh.days %>, <%= i.fresh.label.toLowerCase() %><% } %></small>
         </span>
       </li>
     <% }) %>

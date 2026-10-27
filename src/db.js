@@ -1,88 +1,70 @@
-// Thin database layer: Postgres in production (DATABASE_URL set),
-// Node's built-in SQLite locally so the app runs with zero setup.
-// All queries use $1-style placeholders; they are rewritten for SQLite.
+// MongoDB connection and collections.
+// Production: set MONGODB_URI (e.g. a MongoDB Atlas cluster).
+// Development without MONGODB_URI: an embedded mongod from mongodb-memory-server,
+// persisted to ./.mongo-data, so the app runs with zero setup.
 
-const usePg = Boolean(process.env.DATABASE_URL);
+const fs = require('node:fs');
+const path = require('node:path');
+const { MongoClient, ObjectId } = require('mongodb');
 
-const ID = usePg ? 'SERIAL PRIMARY KEY' : 'INTEGER PRIMARY KEY AUTOINCREMENT';
-const REAL = usePg ? 'DOUBLE PRECISION' : 'REAL';
+let client;
+let database;
+let embedded;
 
-const SCHEMA = [
-  `CREATE TABLE IF NOT EXISTS users (
-    id ${ID},
-    email TEXT NOT NULL UNIQUE,
-    password_hash TEXT NOT NULL,
-    created_at TEXT NOT NULL
-  )`,
-  // A coffee bean or a tea. `variety` is the roast level for coffee, the tea type for tea.
-  `CREATE TABLE IF NOT EXISTS items (
-    id ${ID},
-    user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-    kind TEXT NOT NULL CHECK (kind IN ('coffee', 'tea')),
-    name TEXT NOT NULL,
-    variety TEXT NOT NULL,
-    origin TEXT,
-    roast_date TEXT,
-    notes TEXT,
-    created_at TEXT NOT NULL
-  )`,
-  // `method` is the brew method for coffee, 'western' or 'gongfu' for tea.
-  // `nonce` makes form submission idempotent (double-clicks do not create duplicates).
-  `CREATE TABLE IF NOT EXISTS brews (
-    id ${ID},
-    user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-    item_id INTEGER NOT NULL REFERENCES items(id) ON DELETE CASCADE,
-    method TEXT NOT NULL,
-    dose_g ${REAL} NOT NULL,
-    water_ml ${REAL} NOT NULL,
-    grind TEXT,
-    temp_c ${REAL} NOT NULL,
-    temp_cue TEXT,
-    time_s INTEGER NOT NULL,
-    infusion INTEGER NOT NULL DEFAULT 1,
-    taste TEXT NOT NULL,
-    strength TEXT NOT NULL,
-    rating INTEGER NOT NULL CHECK (rating BETWEEN 1 AND 5),
-    notes TEXT,
-    nonce TEXT NOT NULL,
-    created_at TEXT NOT NULL,
-    UNIQUE (user_id, nonce)
-  )`,
-  'CREATE INDEX IF NOT EXISTS brews_item_idx ON brews (item_id, created_at)',
-  'CREATE INDEX IF NOT EXISTS items_user_idx ON items (user_id)',
-];
-
-let query;
-
-if (usePg) {
-  const { Pool } = require('pg');
-  const pool = new Pool({ connectionString: process.env.DATABASE_URL, max: 5 });
-  query = async (sql, params = []) => (await pool.query(sql, params)).rows;
-} else {
-  const { DatabaseSync } = require('node:sqlite');
-  const path = require('node:path');
-  const db = new DatabaseSync(process.env.SQLITE_FILE || path.join(__dirname, '..', 'brew-journal.db'));
-  db.exec('PRAGMA foreign_keys = ON; PRAGMA journal_mode = WAL;');
-  query = async (sql, params = []) => {
-    const stmt = db.prepare(sql.replace(/\$(\d+)/g, '?$1'));
-    const returnsRows = /^\s*(select|with)\b/i.test(sql) || /\breturning\b/i.test(sql);
-    if (returnsRows) return stmt.all(...params);
-    stmt.run(...params);
-    return [];
-  };
+async function startEmbedded() {
+  let MongoMemoryServer;
+  try {
+    ({ MongoMemoryServer } = require('mongodb-memory-server'));
+  } catch {
+    throw new Error('MONGODB_URI is not set and the local development database is not installed (run `npm install`).');
+  }
+  const dbPath = process.env.MONGO_DATA_DIR || path.join(__dirname, '..', '.mongo-data');
+  fs.mkdirSync(dbPath, { recursive: true });
+  embedded = await MongoMemoryServer.create({ instance: { dbPath, storageEngine: 'wiredTiger' } });
+  return embedded.getUri();
 }
 
-async function init() {
-  for (const statement of SCHEMA) await query(statement);
+async function connect() {
+  let uri = process.env.MONGODB_URI;
+  if (!uri) {
+    if (process.env.NODE_ENV === 'production') throw new Error('MONGODB_URI must be set in production.');
+    uri = await startEmbedded();
+  }
+  client = new MongoClient(uri, { serverSelectionTimeoutMS: 8000 });
+  await client.connect();
+  database = client.db(process.env.MONGODB_DB || 'brew-journal');
+
+  await Promise.all([
+    users().createIndex({ email: 1 }, { unique: true }),
+    items().createIndex({ user_id: 1, created_at: -1 }),
+    // A per-user unique nonce makes brew submission idempotent (double clicks, refreshes).
+    brews().createIndex({ user_id: 1, nonce: 1 }, { unique: true }),
+    brews().createIndex({ item_id: 1, created_at: -1 }),
+    brews().createIndex({ user_id: 1, created_at: -1 }),
+  ]);
+  return { embedded: Boolean(embedded) };
 }
 
-async function one(sql, params) {
-  const rows = await query(sql, params);
-  return rows[0] || null;
+async function close() {
+  await client?.close();
+  await embedded?.stop();
 }
 
-function isUniqueViolation(err) {
-  return err && (err.code === '23505' || /UNIQUE constraint failed/i.test(err.message || ''));
+const users = () => database.collection('users');
+// A coffee bean or a tea. `variety` is the roast level for coffee, the tea type for tea.
+const items = () => database.collection('items');
+// `method` is the brew method for coffee, 'western' or 'gongfu' for tea.
+const brews = () => database.collection('brews');
+
+// Parses a URL/form id; anything that is not a valid ObjectId becomes null (→ 404).
+function toObjectId(value) {
+  const str = String(value ?? '');
+  return /^[a-f0-9]{24}$/i.test(str) ? new ObjectId(str) : null;
 }
 
-module.exports = { query, one, init, isUniqueViolation, usePg };
+// Adds a string `id` so views and the engine never deal with ObjectIds directly.
+const withId = (doc) => doc && { ...doc, id: doc._id.toHexString() };
+
+const isDuplicateKey = (err) => err?.code === 11000;
+
+module.exports = { connect, close, users, items, brews, toObjectId, withId, isDuplicateKey };

@@ -9,6 +9,7 @@ const { howToReach } = require('./temperature');
 const { formatDuration, num } = require('./format');
 
 const DAY = 86400000;
+const time = (v) => new Date(v).getTime();
 
 function freshness(item, today = new Date()) {
   if (item.kind !== 'coffee' || !item.roast_date) return null;
@@ -267,8 +268,8 @@ function dialed(plan, brew) {
 function trend(brew, history) {
   const prev = history
     .filter((h) => h.id !== brew.id && h.method === brew.method && (h.infusion || 1) === (brew.infusion || 1)
-      && (h.created_at < brew.created_at || (h.created_at === brew.created_at && h.id < brew.id)))
-    .sort((a, b) => (a.created_at < b.created_at ? 1 : -1))[0];
+      && (time(h.created_at) < time(brew.created_at) || (time(h.created_at) === time(brew.created_at) && h.id < brew.id)))
+    .sort((a, b) => time(b.created_at) - time(a.created_at))[0];
   if (!prev) return null;
 
   const fields = [
@@ -303,7 +304,7 @@ function suggest(brew, item, history = []) {
 
 // Highest rated brew, most recent first on ties.
 function bestBrew(brews) {
-  return [...brews].sort((a, b) => b.rating - a.rating || (a.created_at < b.created_at ? 1 : -1))[0] || null;
+  return [...brews].sort((a, b) => b.rating - a.rating || time(b.created_at) - time(a.created_at))[0] || null;
 }
 
 module.exports = { suggest, freshness, shiftGrind, trend, bestBrew, tempText };

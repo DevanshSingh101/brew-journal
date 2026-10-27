@@ -56,10 +56,22 @@ app.use((err, req, res, next) => {
   res.status(500).render('error', { title: 'Something went wrong', message: 'An unexpected error occurred. Your data is safe — please try again.' });
 });
 
-const port = Number(process.env.PORT) || 3000;
-db.init()
-  .then(() => app.listen(port, () => console.log(`Brew Journal on http://localhost:${port} (${db.usePg ? 'Postgres' : 'SQLite'})`)))
-  .catch((err) => {
-    console.error('Could not initialise the database:', err);
+async function start() {
+  const { embedded } = await db.connect();
+  const port = Number(process.env.PORT) || 3000;
+  const server = app.listen(port, () => {
+    console.log(`Brew Journal on http://localhost:${port} (${embedded ? 'embedded dev MongoDB, data in .mongo-data/' : 'MongoDB'})`);
+  });
+  const shutdown = () => server.close(() => db.close().finally(() => process.exit(0)));
+  process.on('SIGINT', shutdown);
+  process.on('SIGTERM', shutdown);
+}
+
+if (require.main === module) {
+  start().catch((err) => {
+    console.error('Could not connect to MongoDB:', err.message);
     process.exit(1);
   });
+}
+
+module.exports = app;

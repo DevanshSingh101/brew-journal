@@ -15,33 +15,46 @@ class NotFound extends Error {}
 // Wraps async handlers so rejected promises reach the error handler.
 const wrap = (fn) => (req, res, next) => fn(req, res, next).catch(next);
 
-const toId = (v) => (/^\d+$/.test(String(v)) ? Number(v) : -1);
-
+// Every lookup filters on the owner, so other users' ids behave like missing ones.
 async function ownedItem(req, id) {
-  const item = await db.one('SELECT * FROM items WHERE id = $1 AND user_id = $2', [toId(id), req.user.id]);
+  const _id = db.toObjectId(id);
+  const item = _id && await db.items().findOne({ _id, user_id: req.user._id });
   if (!item) throw new NotFound('That coffee or tea does not exist, or it is not yours.');
-  return item;
+  return db.withId(item);
 }
 
 async function ownedBrew(req, id) {
-  const brew = await db.one('SELECT * FROM brews WHERE id = $1 AND user_id = $2', [toId(id), req.user.id]);
+  const _id = db.toObjectId(id);
+  const brew = _id && await db.brews().findOne({ _id, user_id: req.user._id });
   if (!brew) throw new NotFound('That brew does not exist, or it is not yours.');
-  return brew;
+  return db.withId(brew);
 }
 
-const itemBrews = (itemId) => db.query('SELECT * FROM brews WHERE item_id = $1 ORDER BY created_at DESC, id DESC', [itemId]);
+const itemBrews = async (itemId) => (await db.brews().find({ item_id: itemId }).sort({ created_at: -1, _id: -1 }).toArray()).map(db.withId);
 
 // ---------- Home ----------
 
 router.get('/', wrap(async (req, res) => {
   if (!req.user) return res.render('home', { title: 'Brew Journal' });
-  const items = await db.query('SELECT * FROM items WHERE user_id = $1 ORDER BY created_at DESC', [req.user.id]);
-  const brews = await db.query('SELECT * FROM brews WHERE user_id = $1 ORDER BY created_at DESC, id DESC', [req.user.id]);
-  const byItem = new Map(items.map((i) => [i.id, { ...i, brews: [], fresh: freshness(i) }]));
-  for (const b of brews) byItem.get(b.item_id)?.brews.push(b);
-  const shelf = [...byItem.values()].map((i) => ({ ...i, best: bestBrew(i.brews) }));
-  const recent = brews.slice(0, 6).map((b) => ({ ...b, item: byItem.get(b.item_id) }));
-  res.render('dashboard', { title: 'Your brews', shelf, recent });
+  const [items, stats, recent] = await Promise.all([
+    db.items().find({ user_id: req.user._id }).sort({ created_at: -1 }).toArray(),
+    db.brews().aggregate([
+      { $match: { user_id: req.user._id } },
+      { $group: { _id: '$item_id', count: { $sum: 1 }, bestRating: { $max: '$rating' } } },
+    ]).toArray(),
+    db.brews().find({ user_id: req.user._id }).sort({ created_at: -1, _id: -1 }).limit(6).toArray(),
+  ]);
+  const statsByItem = new Map(stats.map((s) => [s._id.toHexString(), s]));
+  const shelf = items.map((i) => {
+    const s = statsByItem.get(i._id.toHexString());
+    return { ...db.withId(i), fresh: freshness(i), count: s?.count || 0, bestRating: s?.bestRating || null };
+  });
+  const byId = new Map(shelf.map((i) => [i.id, i]));
+  res.render('dashboard', {
+    title: 'Your brews',
+    shelf,
+    recent: recent.map((b) => ({ ...db.withId(b), item: byId.get(b.item_id.toHexString()) })),
+  });
 }));
 
 // ---------- Coffees & teas ----------
@@ -56,18 +69,23 @@ router.post('/items', requireUser, wrap(async (req, res) => {
   if (Object.keys(errors).length) {
     return res.status(422).render('item_form', { title: values.kind === 'tea' ? 'Add a tea' : 'Add a coffee', values, errors });
   }
-  const item = await db.one(
-    `INSERT INTO items (user_id, kind, name, variety, origin, roast_date, notes, created_at)
-     VALUES ($1, $2, $3, $4, $5, $6, $7, $8) RETURNING id`,
-    [req.user.id, values.kind, values.name, values.variety, values.origin || null, values.roast_date || null, values.notes || null, new Date().toISOString()],
-  );
+  const { insertedId } = await db.items().insertOne({
+    user_id: req.user._id,
+    kind: values.kind,
+    name: values.name,
+    variety: values.variety,
+    origin: values.origin || null,
+    roast_date: values.roast_date || null,
+    notes: values.notes || null,
+    created_at: new Date(),
+  });
   req.flash(`${values.name} added. Log your first brew.`);
-  res.redirect(`/brews/new?item=${item.id}`);
+  res.redirect(`/brews/new?item=${insertedId}`);
 }));
 
 router.get('/items/:id', requireUser, wrap(async (req, res) => {
   const item = await ownedItem(req, req.params.id);
-  const brews = await itemBrews(item.id);
+  const brews = await itemBrews(item._id);
   const best = bestBrew(brews);
   const latestPlan = brews[0] ? suggest(brews[0], item, brews) : null;
   res.render('item', { title: item.name, item, brews, best, fresh: freshness(item), latestPlan });
@@ -75,7 +93,9 @@ router.get('/items/:id', requireUser, wrap(async (req, res) => {
 
 router.post('/items/:id/delete', requireUser, wrap(async (req, res) => {
   const item = await ownedItem(req, req.params.id);
-  await db.query('DELETE FROM items WHERE id = $1 AND user_id = $2', [item.id, req.user.id]);
+  // Brews first: if the second step fails we are left with an empty item, never orphaned brews.
+  await db.brews().deleteMany({ item_id: item._id, user_id: req.user._id });
+  await db.items().deleteOne({ _id: item._id, user_id: req.user._id });
   req.flash(`${item.name} and its brews were deleted.`);
   res.redirect('/');
 }));
@@ -103,7 +123,7 @@ function renderBrewForm(res, item, values, errors = {}, source = null, status = 
 
 router.get('/brews/new', requireUser, wrap(async (req, res) => {
   if (!req.query.item) {
-    const items = await db.query('SELECT id, name, kind FROM items WHERE user_id = $1 ORDER BY name', [req.user.id]);
+    const items = (await db.items().find({ user_id: req.user._id }, { projection: { name: 1, kind: 1 } }).sort({ name: 1 }).toArray()).map(db.withId);
     if (!items.length) {
       req.flash('Add a coffee or tea first.');
       return res.redirect('/items/new');
@@ -112,12 +132,12 @@ router.get('/brews/new', requireUser, wrap(async (req, res) => {
   }
 
   const item = await ownedItem(req, req.query.item);
-  const brews = await itemBrews(item.id);
+  const brews = await itemBrews(item._id);
 
   // Pre-fill priority: an applied suggestion, then the last brew, then a reference recipe.
   if (req.query.from) {
     const from = await ownedBrew(req, req.query.from);
-    if (from.item_id !== item.id) throw new NotFound('That brew belongs to a different coffee or tea.');
+    if (!from.item_id.equals(item._id)) throw new NotFound('That brew belongs to a different coffee or tea.');
     const plan = suggest(from, item, brews);
     return renderBrewForm(res, item, brewFormValues(plan.next), {}, { kind: 'suggestion', headline: plan.headline });
   }
@@ -135,32 +155,44 @@ router.post('/brews', requireUser, wrap(async (req, res) => {
     return renderBrewForm(res, item, { ...values, temp_c: req.body.temp_c, time: req.body.time, dose_g: req.body.dose_g, water_ml: req.body.water_ml }, errors, null, 422);
   }
   try {
-    const brew = await db.one(
-      `INSERT INTO brews (user_id, item_id, method, dose_g, water_ml, grind, temp_c, temp_cue, time_s, infusion, taste, strength, rating, notes, nonce, created_at)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16) RETURNING id`,
-      [req.user.id, item.id, values.method, values.dose_g, values.water_ml, values.grind || null, values.temp_c, values.temp_cue || null,
-        values.time_s, values.infusion, values.taste, values.strength, values.rating, values.notes || null, values.nonce, new Date().toISOString()],
-    );
-    res.redirect(`/brews/${brew.id}`);
+    const { insertedId } = await db.brews().insertOne({
+      user_id: req.user._id,
+      item_id: item._id,
+      method: values.method,
+      dose_g: values.dose_g,
+      water_ml: values.water_ml,
+      grind: values.grind || null,
+      temp_c: values.temp_c,
+      temp_cue: values.temp_cue || null,
+      time_s: values.time_s,
+      infusion: values.infusion,
+      taste: values.taste,
+      strength: values.strength,
+      rating: values.rating,
+      notes: values.notes || null,
+      nonce: values.nonce,
+      created_at: new Date(),
+    });
+    res.redirect(`/brews/${insertedId}`);
   } catch (err) {
-    if (!db.isUniqueViolation(err)) throw err;
+    if (!db.isDuplicateKey(err)) throw err;
     // Same form submitted twice (double click, refresh): show the brew that was already saved.
-    const existing = await db.one('SELECT id FROM brews WHERE user_id = $1 AND nonce = $2', [req.user.id, values.nonce]);
-    res.redirect(`/brews/${existing.id}`);
+    const existing = await db.brews().findOne({ user_id: req.user._id, nonce: values.nonce }, { projection: { _id: 1 } });
+    res.redirect(`/brews/${existing._id}`);
   }
 }));
 
 router.get('/brews/:id', requireUser, wrap(async (req, res) => {
   const brew = await ownedBrew(req, req.params.id);
   const item = await ownedItem(req, brew.item_id);
-  const history = await itemBrews(item.id);
+  const history = await itemBrews(item._id);
   const plan = suggest(brew, item, history);
   res.render('brew', { title: `${item.name} — brew`, brew, item, plan, isBest: history.length > 1 && bestBrew(history)?.id === brew.id });
 }));
 
 router.post('/brews/:id/delete', requireUser, wrap(async (req, res) => {
   const brew = await ownedBrew(req, req.params.id);
-  await db.query('DELETE FROM brews WHERE id = $1 AND user_id = $2', [brew.id, req.user.id]);
+  await db.brews().deleteOne({ _id: brew._id, user_id: req.user._id });
   req.flash('Brew deleted.');
   res.redirect(`/items/${brew.item_id}`);
 }));
