@@ -1,0 +1,19 @@
+<%- include('partials/head') %>
+<h1><%= title %></h1>
+<% if (errors.form) { %><p class="error"><%= errors.form %></p><% } %>
+<form method="post" action="/<%= mode %>" class="narrow">
+  <input type="hidden" name="_csrf" value="<%= csrf %>">
+  <label>Email
+    <input type="email" name="email" value="<%= values.email || '' %>" required autocomplete="email">
+    <% if (errors.email) { %><span class="error"><%= errors.email %></span><% } %>
+  </label>
+  <label>Password
+    <input type="password" name="password" required minlength="8" autocomplete="<%= mode === 'login' ? 'current-password' : 'new-password' %>">
+    <% if (errors.password) { %><span class="error"><%= errors.password %></span><% } %>
+  </label>
+  <button><%= mode === 'login' ? 'Log in' : 'Create account' %></button>
+</form>
+<p class="muted">
+  <% if (mode === 'login') { %>New here? <a href="/register">Create an account</a>.<% } else { %>Already have one? <a href="/login">Log in</a>.<% } %>
+</p>
+<%- include('partials/foot') %>

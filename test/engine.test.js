@@ -3,6 +3,7 @@ const assert = require('node:assert/strict');
 const { suggest, freshness, shiftGrind, bestBrew } = require('../src/engine');
 const { mixFor, restMinutes, stageFor } = require('../src/temperature');
 const { parseDuration, formatDuration } = require('../src/format');
+const { validateBrew } = require('../src/validate');
 const { recommend } = require('../src/profiles');
 
 const coffee = { kind: 'coffee', variety: 'medium', roast_date: null };
@@ -122,6 +123,22 @@ test('durations parse and format', () => {
   assert.equal(parseDuration('1h30m'), 5400);
   assert.equal(parseDuration('soon'), null);
   assert.equal(formatDuration(150), '2:30');
+});
+
+test('validation estimates temperature from a bubble stage', () => {
+  const { values, errors } = validateBrew({
+    method: 'western', dose_g: '3', water_ml: '250', temp_cue: 'crab', time: '2:00',
+    taste: 'balanced', strength: 'good', rating: '4', nonce: 'abcdef0123456789',
+  }, { kind: 'tea', variety: 'white' });
+  assert.deepEqual(errors, {});
+  assert.equal(values.temp_c, 83);
+});
+
+test('validation rejects bad input', () => {
+  const { errors } = validateBrew({ method: 'kettle', dose_g: 'lots', water_ml: '', time: 'soon', rating: '9' }, { kind: 'coffee', variety: 'light' });
+  for (const field of ['method', 'dose_g', 'water_ml', 'temp_c', 'time', 'taste', 'strength', 'rating', 'form']) {
+    assert.ok(errors[field], `expected an error for ${field}`);
+  }
 });
 
 test('recommend scales to cup size', () => {

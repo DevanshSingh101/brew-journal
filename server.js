@@ -2,6 +2,7 @@ const path = require('node:path');
 const express = require('express');
 const cookieSession = require('cookie-session');
 const db = require('./src/db');
+const auth = require('./src/auth');
 
 const isProd = process.env.NODE_ENV === 'production';
 if (isProd && !process.env.SESSION_SECRET) {
@@ -29,7 +30,10 @@ app.use((req, res, next) => {
   res.set({ 'X-Content-Type-Options': 'nosniff', 'X-Frame-Options': 'DENY', 'Referrer-Policy': 'same-origin' });
   next();
 });
+app.use(auth.sessionLocals);
+app.use(auth.csrfCheck);
 
+app.use(auth.router);
 app.get('/', (req, res) => res.render('home', { title: 'Brew Journal' }));
 
 app.use((req, res) => {
