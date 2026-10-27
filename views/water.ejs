@@ -1,0 +1,37 @@
+<%- include('partials/head') %>
+<h1>Water temperature without a thermometer</h1>
+<p>Tea and coffee taste very different at 75 °C and at 95 °C. If you do not own a thermometer, use one of three methods.</p>
+
+<h2>1. Read the bubbles</h2>
+<p class="muted">Heat water in a pan or a glass kettle and watch the bottom. These names come from traditional Chinese tea brewing.</p>
+<ul class="stages">
+  <% STAGES.forEach((s) => { %>
+    <li>
+      <%- stageSvg(s) %>
+      <div>
+        <strong><%= s.name %></strong> <span class="muted">· <%= s.range[0] %>–<%= s.range[1] %> °C</span>
+        <p><%= s.look %></p>
+      </div>
+    </li>
+  <% }) %>
+</ul>
+
+<h2>2. Boil, then wait</h2>
+<p class="muted">Rough times for about 500 ml in an open kettle. Smaller amounts cool faster.</p>
+<table>
+  <thead><tr><th>Target</th><th>Rest after boiling</th><th>Good for</th></tr></thead>
+  <tbody>
+    <tr><td>95 °C</td><td>~1 min</td><td>Light roast coffee, pu-erh, black tea</td></tr>
+    <tr><td>90 °C</td><td>~2½ min</td><td>Most coffee, oolong</td></tr>
+    <tr><td>85 °C</td><td>~4 min</td><td>White tea, rolled oolong, AeroPress</td></tr>
+    <tr><td>80 °C</td><td>~6 min</td><td>White tea, Chinese green tea</td></tr>
+    <tr><td>70–75 °C</td><td>~8–11 min</td><td>Japanese green tea</td></tr>
+  </tbody>
+</table>
+
+<h2>3. Mix boiling and cold water</h2>
+<p>The most reliable method. The heat lost by the boiling water equals the heat gained by the cold water, so the share of boiling water you need is</p>
+<p class="formula">boiling share = (target − tap) ÷ (100 − tap)</p>
+<p>With 20 °C tap water, for 80 °C: (80 − 20) ÷ 80 = 75% boiling, 25% cold. The <a href="/guide">calculator</a> does this for your cup size.</p>
+<p class="muted">At altitude water boils below 100 °C, about 1 °C lower for every 300 m. Adjust the stages to match.</p>
+<%- include('partials/foot') %>

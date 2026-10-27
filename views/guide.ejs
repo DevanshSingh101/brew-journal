@@ -1,0 +1,55 @@
+<%- include('partials/head') %>
+<% const coffee = opts.kind === 'coffee'; %>
+<h1>Brew calculator</h1>
+<p class="muted">Pick what you are brewing and how much. You get a starting recipe, and three ways to hit the right water temperature without a thermometer.</p>
+<p class="tabs"><a href="/guide?kind=coffee" class="<%= coffee ? 'active' : '' %>">Coffee</a> <a href="/guide?kind=tea" class="<%= coffee ? '' : 'active' %>">Tea</a></p>
+
+<form method="get" action="/guide" class="row">
+  <input type="hidden" name="kind" value="<%= opts.kind %>">
+  <% if (coffee) { %>
+    <label>Method
+      <select name="method"><% Object.entries(COFFEE_METHODS).forEach(([k, m]) => { %><option value="<%= k %>" <%= opts.method === k ? 'selected' : '' %>><%= m.label %></option><% }) %></select>
+    </label>
+    <label>Roast
+      <select name="roast"><% Object.entries(ROAST_LEVELS).forEach(([k, label]) => { %><option value="<%= k %>" <%= opts.roast === k ? 'selected' : '' %>><%= label %></option><% }) %></select>
+    </label>
+  <% } else { %>
+    <label>Tea
+      <select name="type"><% Object.entries(TEA_TYPES).forEach(([k, t]) => { %><option value="<%= k %>" <%= opts.type === k ? 'selected' : '' %>><%= t.label %></option><% }) %></select>
+    </label>
+    <label>Style
+      <select name="style"><option value="western">Western</option><option value="gongfu" <%= opts.style === 'gongfu' ? 'selected' : '' %>>Gongfu</option></select>
+    </label>
+  <% } %>
+  <label><%= coffee && opts.method === 'espresso' ? 'Shot yield (g)' : 'Water (ml)' %>
+    <input name="ml" type="number" min="20" max="3000" value="<%= rec.water_ml %>">
+  </label>
+  <label class="submit"><button>Calculate</button></label>
+</form>
+
+<section class="card">
+  <p class="big">
+    <strong><%= num(rec.dose_g) %> g</strong> <%= coffee ? 'coffee' : 'leaf' %> ·
+    <strong><%= num(rec.water_ml) %> ml</strong> water ·
+    <strong><%= formatDuration(rec.time_s) %></strong>
+  </p>
+  <p class="muted">
+    <% if (coffee) { %>Ratio 1:<%= num(rec.ratio) %> · <%= rec.grind %> grind<% } else { %><%= num(rec.leaf, 2) %> g per 100 ml<% if (rec.method === 'gongfu') { %> · add <%= TEA_TYPES[opts.type].gongfu.step %> s for each further infusion<% } %><% } %>
+  </p>
+
+  <h2>Water at <%= num(rec.temp_c, 0) %> °C</h2>
+  <% if (how.stage && how.stage.bubbles) { %>
+    <div class="stage">
+      <%- stageSvg(how.stage) %>
+      <p><strong>Watch for “<%= how.stage.name.toLowerCase() %>”.</strong> <%= how.stage.look %></p>
+    </div>
+  <% } %>
+  <ul>
+    <% if (how.rest !== null && how.rest > 0) { %><li>Or boil, then leave the kettle open for about <strong><%= how.rest %> min</strong>.</li><% } %>
+    <% if (how.rest === 0) { %><li>Use water straight off a rolling boil.</li><% } %>
+    <% if (how.mix) { %><li>Or mix <strong><%= how.mix.hot %> ml boiling</strong> with <strong><%= how.mix.cold %> ml cold</strong> tap water (most reliable).</li><% } %>
+    <% if (how.stage && how.stage.key === 'cold') { %><li>Use cold or room-temperature water and steep in the fridge or on the counter.</li><% } %>
+  </ul>
+</section>
+<p class="muted">Logged in? <a href="/brews/new">Log this brew</a> and the assistant will tune it from there.</p>
+<%- include('partials/foot') %>

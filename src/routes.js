@@ -4,7 +4,8 @@ const db = require('./db');
 const { requireUser } = require('./auth');
 const { validateItem, validateBrew } = require('./validate');
 const { suggest, freshness, bestBrew } = require('./engine');
-const { recommend } = require('./profiles');
+const { recommend, COFFEE_METHODS, ROAST_LEVELS, TEA_TYPES } = require('./profiles');
+const { howToReach } = require('./temperature');
 const { durationInput } = require('./format');
 
 const router = express.Router();
@@ -163,5 +164,25 @@ router.post('/brews/:id/delete', requireUser, wrap(async (req, res) => {
   req.flash('Brew deleted.');
   res.redirect(`/items/${brew.item_id}`);
 }));
+
+// ---------- Guides (public) ----------
+
+router.get('/guide', (req, res) => {
+  const q = req.query;
+  const kind = q.kind === 'tea' ? 'tea' : 'coffee';
+  const opts = {
+    kind,
+    method: COFFEE_METHODS[q.method] ? q.method : 'pourover',
+    roast: ROAST_LEVELS[q.roast] ? q.roast : 'medium',
+    type: TEA_TYPES[q.type] ? q.type : 'green',
+    style: q.style === 'gongfu' ? 'gongfu' : 'western',
+  };
+  const ml = Math.round(Number(q.ml));
+  if (ml >= 20 && ml <= 3000) opts.ml = ml;
+  const rec = recommend(opts);
+  res.render('guide', { title: 'Brew calculator', opts, rec, how: howToReach(rec.temp_c, rec.water_ml) });
+});
+
+router.get('/water', (req, res) => res.render('water', { title: 'Water temperature without a thermometer' }));
 
 module.exports = { router, NotFound };
