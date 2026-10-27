@@ -1,0 +1,36 @@
+<%- include('partials/head') %>
+<h1>Your brews</h1>
+<p><a class="button" href="/brews/new">Log a brew</a> &nbsp; <a href="/items/new?kind=coffee">+ Coffee</a> · <a href="/items/new?kind=tea">+ Tea</a></p>
+
+<h2>Shelf</h2>
+<% if (!shelf.length) { %>
+  <p class="muted">Your shelf is empty. Add the coffee or tea you are brewing — the assistant uses its roast or type to tailor advice.</p>
+<% } else { %>
+  <ul class="list">
+    <% shelf.forEach((i) => { %>
+      <li>
+        <span>
+          <a href="/items/<%= i.id %>"><%= i.name %></a><br>
+          <small><%= i.kind === 'coffee' ? ROAST_LEVELS[i.variety] : TEA_TYPES[i.variety].label + ' tea' %><% if (i.origin) { %> · <%= i.origin %><% } %></small>
+        </span>
+        <span class="right">
+          <% if (i.best) { %><%- include('partials/stars', { r: i.best.rating }) %><br><% } %>
+          <small><%= i.brews.length %> brew<%= i.brews.length === 1 ? '' : 's' %><% if (i.fresh) { %> · day <%= i.fresh.days %>, <%= i.fresh.label.toLowerCase() %><% } %></small>
+        </span>
+      </li>
+    <% }) %>
+  </ul>
+<% } %>
+
+<% if (recent.length) { %>
+  <h2>Recent</h2>
+  <ul class="list">
+    <% recent.forEach((b) => { %>
+      <li>
+        <span><a href="/brews/<%= b.id %>"><%= b.item.name %></a><br><small><%= formatDate(b.created_at) %> · <%= (b.item.kind === 'coffee' ? COFFEE_TASTES : TEA_TASTES)[b.taste] %></small></span>
+        <span class="right"><%- include('partials/stars', { r: b.rating }) %></span>
+      </li>
+    <% }) %>
+  </ul>
+<% } %>
+<%- include('partials/foot') %>

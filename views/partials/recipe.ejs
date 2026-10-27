@@ -1,0 +1,7 @@
+<%# One-line summary of a brew's recipe. Expects `b` (brew) and `item`. %>
+<% if (item.kind === 'coffee') { %>
+  <%= COFFEE_METHODS[b.method].label.split(' (')[0] %> · <%= num(b.dose_g) %> g → <%= num(b.water_ml) %> ml (1:<%= num(b.water_ml / b.dose_g) %>)<% if (b.grind) { %> · grind <%= b.grind %><% } %> · <%= num(b.temp_c, 0) %> °C · <%= formatDuration(b.time_s) %>
+<% } else { %>
+  <%= b.method === 'gongfu' ? 'Gongfu' : 'Western' %><% if (b.method === 'gongfu') { %> #<%= b.infusion %><% } %> · <%= num(b.dose_g) %> g in <%= num(b.water_ml) %> ml (<%= num(b.dose_g / b.water_ml * 100) %> g/100 ml) · <%= num(b.temp_c, 0) %> °C · <%= formatDuration(b.time_s) %>
+<% } %>
+<% if (b.temp_cue) { %><small>(estimated: <%= stageByKey(b.temp_cue).name.toLowerCase() %>)</small><% } %>

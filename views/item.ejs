@@ -1,0 +1,46 @@
+<%- include('partials/head') %>
+<p class="muted"><a href="/">← Shelf</a></p>
+<h1><%= item.name %></h1>
+<p class="muted">
+  <%= item.kind === 'coffee' ? ROAST_LEVELS[item.variety] + ' coffee' : TEA_TYPES[item.variety].label + ' tea' %><% if (item.origin) { %> · <%= item.origin %><% } %><% if (item.roast_date) { %> · roasted <%= formatDate(item.roast_date) %><% } %>
+</p>
+<% if (fresh) { %><p><strong>Day <%= fresh.days %> · <%= fresh.label %>.</strong> <%= fresh.tip %></p><% } %>
+<% if (item.notes) { %><p><%= item.notes %></p><% } %>
+<p><a class="button" href="/brews/new?item=<%= item.id %>">Log a brew</a></p>
+
+<% if (latestPlan && !latestPlan.dialedIn) { %>
+  <div class="card">
+    <small class="muted">Next time</small><br>
+    <strong><%= latestPlan.headline %></strong> — <a href="/brews/new?item=<%= item.id %>&from=<%= brews[0].id %>">brew with this change →</a>
+  </div>
+<% } %>
+
+<h2>Best recipe</h2>
+<% if (best) { %>
+  <p><%- include('partials/stars', { r: best.rating }) %><br><%- include('partials/recipe', { b: best, item }) %><br><a href="/brews/<%= best.id %>">View brew</a></p>
+<% } else { %>
+  <p class="muted">No brews yet. Log one and rate it — your best recipe will appear here.</p>
+<% } %>
+
+<% if (brews.length) { %>
+  <h2>History</h2>
+  <table>
+    <thead><tr><th>Date</th><th>Recipe</th><th>Taste</th><th></th></tr></thead>
+    <tbody>
+      <% brews.forEach((b) => { %>
+        <tr>
+          <td><a href="/brews/<%= b.id %>"><%= formatDate(b.created_at) %></a></td>
+          <td><%- include('partials/recipe', { b, item }) %></td>
+          <td><%= (item.kind === 'coffee' ? COFFEE_TASTES : TEA_TASTES)[b.taste] %></td>
+          <td><%- include('partials/stars', { r: b.rating }) %></td>
+        </tr>
+      <% }) %>
+    </tbody>
+  </table>
+<% } %>
+
+<form method="post" action="/items/<%= item.id %>/delete" class="danger" onsubmit="return confirm('Delete this <%= item.kind %> and all its brews?')">
+  <input type="hidden" name="_csrf" value="<%= csrf %>">
+  <button class="link">Delete this <%= item.kind %> and its brews</button>
+</form>
+<%- include('partials/foot') %>

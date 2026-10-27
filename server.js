@@ -3,6 +3,11 @@ const express = require('express');
 const cookieSession = require('cookie-session');
 const db = require('./src/db');
 const auth = require('./src/auth');
+const { router, NotFound } = require('./src/routes');
+const { tempText } = require('./src/engine');
+const profiles = require('./src/profiles');
+const temperature = require('./src/temperature');
+const format = require('./src/format');
 
 const isProd = process.env.NODE_ENV === 'production';
 if (isProd && !process.env.SESSION_SECRET) {
@@ -15,6 +20,8 @@ app.set('view engine', 'ejs');
 app.set('views', path.join(__dirname, 'views'));
 app.set('trust proxy', 1);
 app.disable('x-powered-by');
+
+Object.assign(app.locals, profiles, temperature, format, { tempText });
 
 app.use(express.static(path.join(__dirname, 'public'), { maxAge: isProd ? '1d' : 0 }));
 app.use(express.urlencoded({ extended: false, limit: '20kb' }));
@@ -34,7 +41,7 @@ app.use(auth.sessionLocals);
 app.use(auth.csrfCheck);
 
 app.use(auth.router);
-app.get('/', (req, res) => res.render('home', { title: 'Brew Journal' }));
+app.use(router);
 
 app.use((req, res) => {
   res.status(404).render('error', { title: 'Not found', message: 'There is nothing at this address.' });
@@ -42,6 +49,9 @@ app.use((req, res) => {
 
 // eslint-disable-next-line no-unused-vars
 app.use((err, req, res, next) => {
+  if (err instanceof NotFound) {
+    return res.status(404).render('error', { title: 'Not found', message: err.message });
+  }
   console.error(err);
   res.status(500).render('error', { title: 'Something went wrong', message: 'An unexpected error occurred. Your data is safe — please try again.' });
 });

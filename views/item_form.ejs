@@ -1,0 +1,38 @@
+<%- include('partials/head') %>
+<% const coffee = values.kind !== 'tea'; %>
+<p class="muted"><a href="/">← Shelf</a></p>
+<h1><%= title %></h1>
+<p class="muted"><a href="/items/new?kind=<%= coffee ? 'tea' : 'coffee' %>">Add a <%= coffee ? 'tea' : 'coffee' %> instead</a></p>
+<form method="post" action="/items">
+  <input type="hidden" name="_csrf" value="<%= csrf %>">
+  <input type="hidden" name="kind" value="<%= values.kind %>">
+  <label>Name
+    <input name="name" value="<%= values.name || '' %>" required maxlength="80" placeholder="<%= coffee ? 'e.g. Ethiopia Guji' : 'e.g. Da Hong Pao' %>">
+    <% if (errors.name) { %><span class="error"><%= errors.name %></span><% } %>
+  </label>
+  <div class="row">
+    <label><%= coffee ? 'Roast level' : 'Tea type' %>
+      <select name="variety" required>
+        <option value="">Choose…</option>
+        <% Object.entries(coffee ? ROAST_LEVELS : TEA_TYPES).forEach(([key, v]) => { %>
+          <option value="<%= key %>" <%= values.variety === key ? 'selected' : '' %>><%= coffee ? v : v.label %></option>
+        <% }) %>
+      </select>
+      <% if (errors.variety) { %><span class="error"><%= errors.variety %></span><% } %>
+    </label>
+    <label><%= coffee ? 'Origin / roaster' : 'Origin' %> <small>optional</small>
+      <input name="origin" value="<%= values.origin || '' %>" maxlength="80">
+    </label>
+    <% if (coffee) { %>
+      <label>Roast date <small>optional</small>
+        <input type="date" name="roast_date" value="<%= values.roast_date || '' %>">
+        <% if (errors.roast_date) { %><span class="error"><%= errors.roast_date %></span><% } %>
+      </label>
+    <% } %>
+  </div>
+  <label>Notes <small>optional</small>
+    <textarea name="notes" rows="2" maxlength="500"><%= values.notes || '' %></textarea>
+  </label>
+  <button>Add to shelf</button>
+</form>
+<%- include('partials/foot') %>
