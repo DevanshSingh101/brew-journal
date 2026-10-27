@@ -155,7 +155,7 @@ router.get('/brews/:id', requireUser, wrap(async (req, res) => {
   const item = await ownedItem(req, brew.item_id);
   const history = await itemBrews(item.id);
   const plan = suggest(brew, item, history);
-  res.render('brew', { title: `${item.name} — brew`, brew, item, plan, isBest: bestBrew(history)?.id === brew.id });
+  res.render('brew', { title: `${item.name} — brew`, brew, item, plan, isBest: history.length > 1 && bestBrew(history)?.id === brew.id });
 }));
 
 router.post('/brews/:id/delete', requireUser, wrap(async (req, res) => {
