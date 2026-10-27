@@ -40,14 +40,24 @@ router.get('/', wrap(async (req, res) => {
     db.items().find({ user_id: req.user._id }).sort({ created_at: -1 }).toArray(),
     db.brews().aggregate([
       { $match: { user_id: req.user._id } },
-      { $group: { _id: '$item_id', count: { $sum: 1 }, bestRating: { $max: '$rating' } } },
+      {
+        $group: {
+          _id: '$item_id',
+          count: { $sum: 1 },
+          bestRating: { $max: '$rating' },
+          ratingSum: { $sum: '$rating' },
+          loved: { $sum: { $cond: [{ $gte: ['$rating', 4] }, 1, 0] } },
+        },
+      },
     ]).toArray(),
     db.brews().find({ user_id: req.user._id }).sort({ created_at: -1, _id: -1 }).limit(6).toArray(),
   ]);
   const statsByItem = new Map(stats.map((s) => [s._id.toHexString(), s]));
   const shelf = items.map((i) => {
     const s = statsByItem.get(i._id.toHexString());
-    return { ...db.withId(i), fresh: freshness(i), count: s?.count || 0, bestRating: s?.bestRating || null };
+    return {
+      ...db.withId(i), fresh: freshness(i), count: s?.count || 0, bestRating: s?.bestRating || null, ratingSum: s?.ratingSum || 0, loved: s?.loved || 0,
+    };
   });
   const byId = new Map(shelf.map((i) => [i.id, i]));
   res.render('dashboard', {
