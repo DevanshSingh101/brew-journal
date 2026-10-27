@@ -1,0 +1,9 @@
+<%- include('partials/head') %>
+<h1>What are you brewing?</h1>
+<ul class="list">
+  <% items.forEach((i) => { %>
+    <li><a href="/brews/new?item=<%= i.id %>"><%= i.name %></a><small><%= i.kind %></small></li>
+  <% }) %>
+</ul>
+<p class="muted">Something new? <a href="/items/new?kind=coffee">Add a coffee</a> or <a href="/items/new?kind=tea">add a tea</a>.</p>
+<%- include('partials/foot') %>

@@ -1,0 +1,39 @@
+<%- include('partials/head') %>
+<% const tastes = item.kind === 'coffee' ? COFFEE_TASTES : TEA_TASTES; %>
+<p class="muted"><a href="/items/<%= item.id %>">← <%= item.name %></a></p>
+<small class="muted"><%= formatDate(brew.created_at) %></small>
+<h1><%= item.name %></h1>
+<p><%- include('partials/recipe', { b: brew, item }) %></p>
+<p>
+  <%= tastes[brew.taste] %> · <%= STRENGTHS[brew.strength].toLowerCase() %> · <%- include('partials/stars', { r: brew.rating }) %>
+  <% if (isBest) { %><br><small>Your best brew of this <%= item.kind %> so far.</small><% } %>
+</p>
+<% if (brew.notes) { %><p class="muted">“<%= brew.notes %>”</p><% } %>
+
+<section class="card">
+  <small class="muted">Dial-in assistant</small>
+  <h2 class="tight"><%= plan.headline %></h2>
+  <p><%= plan.reason %></p>
+  <% if (plan.changes.length) { %>
+    <ul><% plan.changes.forEach((c) => { %><li><%= c %></li><% }) %></ul>
+  <% } %>
+  <% plan.notes.forEach((n) => { %><p><%= n %></p><% }) %>
+  <% plan.alternatives.forEach((a) => { %><p class="muted"><%= a %></p><% }) %>
+  <p><a class="button" href="/brews/new?item=<%= item.id %>&from=<%= brew.id %>"><%= plan.dialedIn ? 'Brew this again' : 'Brew again with this change' %></a></p>
+</section>
+
+<% if (plan.trend) { %>
+  <h2>Compared with last time</h2>
+  <p><%= plan.trend %></p>
+<% } %>
+
+<% if (plan.checks.length) { %>
+  <h2>Worth checking</h2>
+  <ul><% plan.checks.forEach((c) => { %><li><%= c %></li><% }) %></ul>
+<% } %>
+
+<form method="post" action="/brews/<%= brew.id %>/delete" class="danger" onsubmit="return confirm('Delete this brew?')">
+  <input type="hidden" name="_csrf" value="<%= csrf %>">
+  <button class="link">Delete this brew</button>
+</form>
+<%- include('partials/foot') %>

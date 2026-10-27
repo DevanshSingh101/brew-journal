@@ -1,0 +1,106 @@
+<%- include('partials/head') %>
+<% const coffee = item.kind === 'coffee'; const tastes = coffee ? COFFEE_TASTES : TEA_TASTES; %>
+<% const field = (name) => errors[name] ? `<span class="error">${errors[name]}</span>` : ''; %>
+<p class="muted"><a href="/items/<%= item.id %>">← <%= item.name %></a></p>
+<h1>Log a brew</h1>
+<p class="muted">
+  <% if (source && source.kind === 'suggestion') { %>Pre-filled with the assistant’s suggestion: <strong><%= source.headline %></strong>. Adjust anything you actually did differently.
+  <% } else if (source && source.kind === 'last') { %>Pre-filled from your last brew of this <%= item.kind %>.
+  <% } else if (source) { %>Pre-filled with a reference recipe for <%= coffee ? ROAST_LEVELS[item.variety].toLowerCase() + ' coffee' : TEA_TYPES[item.variety].label.toLowerCase() + ' tea' %>.<% } %>
+</p>
+<% if (errors.form) { %><p class="error"><%= errors.form %></p><% } %>
+
+<form method="post" action="/brews">
+  <input type="hidden" name="_csrf" value="<%= csrf %>">
+  <input type="hidden" name="item_id" value="<%= item.id %>">
+  <input type="hidden" name="nonce" value="<%= values.nonce %>">
+
+  <label><%= coffee ? 'Method' : 'Style' %>
+    <select name="method">
+      <% Object.entries(coffee ? COFFEE_METHODS : TEA_STYLES).forEach(([key, v]) => { %>
+        <% if (!coffee && key === 'gongfu' && !TEA_TYPES[item.variety].gongfu) return; %>
+        <option value="<%= key %>" <%= values.method === key ? 'selected' : '' %>><%= coffee ? v.label : v %></option>
+      <% }) %>
+    </select>
+    <%- field('method') %>
+  </label>
+
+  <div class="row">
+    <label><%= coffee ? 'Coffee (g)' : 'Leaf (g)' %>
+      <input name="dose_g" value="<%= values.dose_g ?? '' %>" inputmode="decimal" required>
+      <%- field('dose_g') %>
+    </label>
+    <label>Water (ml)
+      <input name="water_ml" value="<%= values.water_ml ?? '' %>" inputmode="decimal" required>
+      <%- field('water_ml') %>
+    </label>
+    <% if (coffee) { %>
+      <label>Grind setting
+        <input name="grind" value="<%= values.grind || '' %>" maxlength="30" placeholder="e.g. 18">
+      </label>
+    <% } %>
+  </div>
+  <% if (coffee) { %><p class="hint">For espresso, enter the shot’s yield in grams as water.</p><% } %>
+
+  <div class="row">
+    <label>Water temperature (°C)
+      <input name="temp_c" value="<%= values.temp_c ?? '' %>" inputmode="decimal">
+      <%- field('temp_c') %>
+    </label>
+    <label>No thermometer? The water looked like…
+      <select name="temp_cue">
+        <option value="">— I measured it —</option>
+        <% STAGES.forEach((s) => { %>
+          <option value="<%= s.key %>" <%= values.temp_cue === s.key ? 'selected' : '' %>><%= s.name %> (~<%= s.est %> °C)</option>
+        <% }) %>
+        <option value="cold" <%= values.temp_cue === 'cold' ? 'selected' : '' %>>Cold / room temperature</option>
+      </select>
+    </label>
+  </div>
+  <% if (values.temp_c && Number(values.temp_c) > 30) { %>
+    <p class="hint">Aim: <%= tempText(Number(values.temp_c), Number(values.water_ml) || 250) %>. <a href="/water" target="_blank">How to read the bubbles</a></p>
+  <% } %>
+
+  <div class="row">
+    <label>Brew time
+      <input name="time" value="<%= values.time || '' %>" placeholder="2:30, 45, 16h" required>
+      <%- field('time') %>
+    </label>
+    <% if (!coffee) { %>
+      <label>Infusion no. <small>gongfu</small>
+        <input name="infusion" type="number" min="1" max="30" value="<%= values.infusion || 1 %>">
+        <%- field('infusion') %>
+      </label>
+    <% } %>
+  </div>
+
+  <fieldset>
+    <legend>How did it taste?</legend>
+    <% Object.entries(tastes).forEach(([key, label]) => { %>
+      <label class="choice"><input type="radio" name="taste" value="<%= key %>" <%= values.taste === key ? 'checked' : '' %> required> <%= label %></label>
+    <% }) %>
+    <%- field('taste') %>
+  </fieldset>
+
+  <fieldset>
+    <legend>Strength</legend>
+    <% Object.entries(STRENGTHS).forEach(([key, label]) => { %>
+      <label class="choice"><input type="radio" name="strength" value="<%= key %>" <%= values.strength === key ? 'checked' : '' %> required> <%= label %></label>
+    <% }) %>
+    <%- field('strength') %>
+  </fieldset>
+
+  <fieldset>
+    <legend>Overall rating</legend>
+    <% [1, 2, 3, 4, 5].forEach((r) => { %>
+      <label class="choice"><input type="radio" name="rating" value="<%= r %>" <%= Number(values.rating) === r ? 'checked' : '' %> required> <%= r %></label>
+    <% }) %>
+    <%- field('rating') %>
+  </fieldset>
+
+  <label>Notes <small>optional</small>
+    <textarea name="notes" rows="2" maxlength="500" placeholder="Fruity, a bit thin…"><%= values.notes || '' %></textarea>
+  </label>
+  <button>Save and get advice</button>
+</form>
+<%- include('partials/foot') %>
